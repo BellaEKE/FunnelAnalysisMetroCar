@@ -1,0 +1,577 @@
+METROCAR SQL CODES
+
+Quiz querys
+--DISTINCT users who downloaded app(23607)
+SELECT 
+  DISTINCT s.user_id, 
+  a.platform, 
+  a.download_ts, 
+  s.signup_ts, 
+  s.age_range 
+FROM 
+  app_downloads a FULL 
+  JOIN signups s ON a.app_download_key = s.session_id;
+---users who signed up after downloading(17632)
+SELECT 
+  DISTINCT s.user_id, 
+  a.platform, 
+  a.download_ts, 
+  s.signup_ts, 
+  s.age_range 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+WHERE 
+  s.signup_ts IS NOT NULL;
+--users who made a request after signup(12406)
+SELECT 
+  DISTINCT s.user_id, 
+  a.platform, 
+  a.download_ts, 
+  s.signup_ts, 
+  s.age_range 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+  INNER JOIN ride_requests r ON s.user_id = r.user_id 
+WHERE 
+  r.request_ts IS NOT NULL;
+--the uniques rides that were accepted by a driver (12278)
+SELECT 
+  DISTINCT s.user_id, 
+  a.platform, 
+  a.download_ts, 
+  s.signup_ts, 
+  s.age_range 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+  INNER JOIN ride_requests r ON s.user_id = r.user_id 
+WHERE 
+  r.request_ts IS NOT NULL 
+  AND r.accept_ts IS NOT NULL;
+--accepted rides where users were successfully picked up and dropped off (6233)
+SELECT 
+  DISTINCT s.user_id, 
+  a.platform, 
+  a.download_ts, 
+  s.signup_ts, 
+  s.age_range 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+  INNER JOIN ride_requests r ON s.user_id = r.user_id 
+WHERE 
+  r.pickup_ts IS NOT NULL 
+  AND r.dropoff_ts IS NOT NULL;
+---users whose payment was successful(6233)
+SELECT 
+  DISTINCT s.user_id, 
+  t.charge_status 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+  INNER JOIN ride_requests r ON s.user_id = r.user_id 
+  INNER JOIN transactions t ON r.ride_id = t.ride_id 
+WHERE 
+  t.charge_status = 'Approved' ---users who left a review(4348)
+SELECT 
+  DISTINCT s.user_id 
+FROM 
+  app_downloads a 
+  INNER JOIN signups s ON a.app_download_key = s.session_id 
+  INNER JOIN ride_requests r ON s.user_id = r.user_id 
+  INNER JOIN transactions t ON r.ride_id = t.ride_id 
+  INNER JOIN reviews re ON t.ride_id = re.ride_id 
+WHERE 
+  re.review IS NOT NULL;
+
+2----method 2 funnel analysis
+
+
+WITH app_downloads_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    a.platform, 
+    a.download_ts, 
+    s.signup_ts, 
+    s.age_range 
+  FROM 
+    app_downloads a FULL 
+    JOIN signups s ON a.app_download_key = s.session_id
+), 
+signups_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    a.platform, 
+    a.download_ts, 
+    s.signup_ts, 
+    s.age_range 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+  WHERE 
+    s.signup_ts IS NOT NULL
+), 
+ride_requests_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    a.platform, 
+    a.download_ts, 
+    s.signup_ts, 
+    s.age_range 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+    INNER JOIN ride_requests r ON s.user_id = r.user_id 
+  WHERE 
+    r.request_ts IS NOT NULL
+), 
+accepted_rides_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    a.platform, 
+    a.download_ts, 
+    s.signup_ts, 
+    s.age_range 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+    INNER JOIN ride_requests r ON s.user_id = r.user_id 
+  WHERE 
+    r.request_ts IS NOT NULL 
+    AND r.accept_ts IS NOT NULL
+), 
+completed_rides_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    a.platform, 
+    a.download_ts, 
+    s.signup_ts, 
+    s.age_range 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+    INNER JOIN ride_requests r ON s.user_id = r.user_id 
+  WHERE 
+    r.pickup_ts IS NOT NULL 
+    AND r.dropoff_ts IS NOT NULL
+), 
+successful_payment_cte AS (
+  SELECT 
+    DISTINCT s.user_id, 
+    t.charge_status 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+    INNER JOIN ride_requests r ON s.user_id = r.user_id 
+    INNER JOIN transactions t ON r.ride_id = t.ride_id 
+  WHERE 
+    t.charge_status = 'Approved'
+), 
+reviews_cte AS (
+  SELECT 
+    DISTINCT s.user_id 
+  FROM 
+    app_downloads a 
+    INNER JOIN signups s ON a.app_download_key = s.session_id 
+    INNER JOIN ride_requests r ON s.user_id = r.user_id 
+    INNER JOIN transactions t ON r.ride_id = t.ride_id 
+    INNER JOIN reviews re ON t.ride_id = re.ride_id 
+  WHERE 
+    re.review IS NOT NULL
+), 
+steps as (
+  SELECT 
+    'downloaded' as step, 
+    COUNT(*) 
+  FROM 
+    app_downloads_cte 
+  UNION 
+  SELECT 
+    'signups' as step, 
+    COUNT(*) 
+  FROM 
+    signups_cte 
+  UNION 
+  SELECT 
+    'ride_requests' as step, 
+    COUNT(*) 
+  FROM 
+    ride_requests_cte 
+  UNION 
+  SELECT 
+    'accepted_rides' as step, 
+    COUNT(*) 
+  FROM 
+    accepted_rides_cte 
+  UNION 
+  SELECT 
+    'completed_rides' as step, 
+    COUNT(*) 
+  FROM 
+    completed_rides_cte 
+  UNION 
+  SELECT 
+    'successful_payment' as step, 
+    COUNT(*) 
+  FROM 
+    successful_payment_cte 
+  UNION 
+  SELECT 
+    'reviews' as step, 
+    COUNT(*) 
+  FROM 
+    reviews_cte 
+  ORDER BY 
+    COUNT desc
+) 
+SELECT 
+  step, 
+  COUNT, 
+  LAG(COUNT, 1) OVER (), 
+  round(
+    (
+      1.0 - COUNT :: numeric / LAG(COUNT, 1) OVER ()
+    ), 
+    2
+  ) AS drop_off 
+FROM 
+  Steps;
+
+
+3------filter by platform
+with user_platform as (
+  select 
+    user_id, 
+    platform 
+  from 
+    app_downloads 
+    left join signups on app_downloads.app_download_key = signups.session_id 
+  where 
+    user_id is not null
+), 
+downloads as (
+  select 
+    0 as step, 
+    'download' as funnel_name, 
+    platform, 
+    count(distinct app_download_key) as users_count, 
+    0 as rides_count 
+  from 
+    app_downloads 
+  group by 
+    platform
+), 
+signup as (
+  select 
+    1, 
+    'signups', 
+    platform, 
+    count(distinct user_id), 
+    0 as rides_count 
+  from 
+    signups 
+    join user_platform using(user_id) 
+  where 
+    signup_ts is not null 
+  group by 
+    platform
+), 
+requested as (
+  select 
+    2, 
+    'ride_requested', 
+    platform, 
+    count(distinct user_id), 
+    count (distinct ride_id) 
+  from 
+    ride_requests 
+    join user_platform using(user_id) 
+  where 
+    request_ts is not null 
+  group by 
+    platform
+), 
+accepted as (
+  select 
+    3, 
+    'ride_accepted', 
+    platform, 
+    count(distinct user_id), 
+    count (distinct ride_id) 
+  from 
+    ride_requests 
+    join user_platform using(user_id) 
+  where 
+    accept_ts is not null 
+  group by 
+    platform
+), 
+completed as (
+  select 
+    4, 
+    'ride_completed', 
+    platform, 
+    count(distinct user_id), 
+    count (distinct ride_id) 
+  from 
+    ride_requests 
+    join user_platform using(user_id) 
+  where 
+    dropoff_ts is not null 
+  group by 
+    platform
+), 
+payment as (
+  select 
+    5, 
+    'payment_successful', 
+    platform, 
+    count(distinct user_id), 
+    count (distinct ride_id) 
+  from 
+    transactions 
+    join ride_requests using(ride_id) 
+    join user_platform using(user_id) 
+  where 
+    charge_status = 'Approved' 
+  group by 
+    platform
+), 
+made_review as (
+  select 
+    6, 
+    'review', 
+    platform, 
+    count(distinct user_id), 
+    count (distinct ride_id) 
+  from 
+    reviews 
+    join user_platform using (user_id) 
+  where 
+    review is not null 
+  group by 
+    platform
+) 
+select 
+  * 
+from 
+  downloads 
+union 
+select 
+  * 
+from 
+  signup 
+union 
+select 
+  * 
+from 
+  requested 
+union 
+select 
+  * 
+from 
+  accepted 
+union 
+select 
+  * 
+from 
+  completed 
+union 
+select 
+  * 
+from 
+  payment 
+union 
+select 
+  * 
+from 
+  made_review 
+order by 
+  Step;
+
+4---groupby age group
+
+with user_details as (
+  select 
+    app_download_key, 
+    user_id, 
+    platform, 
+    age_range, 
+    date(download_ts) as download_dt 
+  from 
+    app_downloads 
+    left join signups on app_downloads.app_download_key = signups.session_id
+), 
+downloads as (
+  select 
+    0 as step, 
+    'download' as name, 
+    platform, 
+    age_range, 
+    download_dt, 
+    count(distinct app_download_key) as users_count, 
+    0 as count_rides 
+  from 
+    user_details 
+  group by 
+    platform, 
+    age_range, 
+    download_dt
+), 
+signup as(
+  select 
+    1 as step, 
+    'signup' as name, 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    0 as count_rides 
+  from 
+    signups 
+    join user_details using(user_id) 
+  where 
+    signup_ts is not null 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+), 
+requested as (
+  select 
+    2, 
+    'ride_requested', 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    count (distinct ride_id) as count_rides 
+  from 
+    ride_requests 
+    join user_details using(user_id) 
+  where 
+    request_ts is not null 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+), 
+accepted as (
+  select 
+    3, 
+    'ride_accepted', 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    count (distinct ride_id) as count_rides 
+  from 
+    ride_requests 
+    join user_details using(user_id) 
+  where 
+    accept_ts is not null 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+), 
+completed as (
+  select 
+    4, 
+    'ride_completed', 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    count (distinct ride_id) as count_rides 
+  from 
+    ride_requests 
+    join user_details using(user_id) 
+  where 
+    dropoff_ts is not null 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+), 
+payment as (
+  select 
+    5, 
+    'payment_successful', 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    count (distinct ride_id) as count_rides 
+  from 
+    transactions 
+    join ride_requests using(ride_id) 
+    join user_details using(user_id) 
+  where 
+    charge_status = 'Approved' 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+), 
+made_review as (
+  select 
+    6, 
+    'review', 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt, 
+    count(distinct user_id) as users_count, 
+    count (distinct ride_id) as count_rides 
+  from 
+    reviews 
+    join user_details using (user_id) 
+  where 
+    review is not null 
+  group by 
+    user_details.platform, 
+    user_details.age_range, 
+    user_details.download_dt
+) 
+select 
+  * 
+from 
+  downloads 
+union 
+select 
+  * 
+from 
+  signup 
+union 
+select 
+  * 
+from 
+  requested 
+union 
+select 
+  * 
+from 
+  accepted 
+union 
+select 
+  * 
+from 
+  completed 
+union 
+select 
+  * 
+from 
+  payment 
+union 
+select 
+  * 
+from 
+  made_review
+
+
+
+
+
+
